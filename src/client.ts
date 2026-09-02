@@ -28,6 +28,20 @@ export class ContractAlreadySignedError extends Error {
   }
 }
 
+/** Thrown when the public customer flow (saveCustomerData/signContract) is
+ * called on a contract that's still status='draft' -- i.e. internal staff
+ * haven't released it yet. The frontend page itself already gates on this
+ * (a draft's public link shows a neutral "not released yet" message and
+ * never renders the form at all), so reaching this in practice means the
+ * link was opened/guessed before release -- this is the defense-in-depth
+ * check at the data layer, same principle as ContractAlreadySignedError. */
+export class ContractNotReadyError extends Error {
+  constructor(id: string) {
+    super(`Contract "${id}" has not been released yet.`);
+    this.name = "ContractNotReadyError";
+  }
+}
+
 type Db = NodePgDatabase<Record<string, never>>;
 
 /**
@@ -83,7 +97,8 @@ export class WeddingClient {
       const rows = await tx.select().from(contracts).where(eq(contracts.id, id));
       const row = rows[0];
       if (!row) throw new ContractNotFoundError(id);
-      if (row.status !== "draft") throw new ContractAlreadySignedError(id);
+      if (row.status === "draft") throw new ContractNotReadyError(id);
+      if (row.status === "signed") throw new ContractAlreadySignedError(id);
 
       const updated = await tx
         .update(contracts)
@@ -122,7 +137,8 @@ export class WeddingClient {
       const rows = await tx.select().from(contracts).where(eq(contracts.id, id));
       const row = rows[0];
       if (!row) throw new ContractNotFoundError(id);
-      if (row.status !== "draft") throw new ContractAlreadySignedError(id);
+      if (row.status === "draft") throw new ContractNotReadyError(id);
+      if (row.status === "signed") throw new ContractAlreadySignedError(id);
 
       const signedAt = new Date();
       const snapshot: ContentSnapshot = {

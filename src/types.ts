@@ -1,6 +1,14 @@
 export type BrandSlug = "dimax" | "dkhochzeitart";
 
-export type ContractStatus = "draft" | "signed";
+/**
+ * draft  -- created internally, editable, public link inert.
+ * ready  -- internally reviewed and released; public link now works, no
+ *           email sent yet.
+ * sent   -- same as ready for the customer-facing flow; internal
+ *           bookkeeping only ("we emailed them").
+ * signed -- final, read-only.
+ */
+export type ContractStatus = "draft" | "ready" | "sent" | "signed";
 
 export type BookingType = "photo" | "video" | "photo_and_video";
 
@@ -70,4 +78,33 @@ export interface CustomerDataInput {
   address: string | null;
   weddingDate: string | null;
   location: string | null;
+}
+
+/**
+ * Everything the internal tool sets when staff create or edit a draft --
+ * deliberately a separate shape from CustomerDataInput, which only covers
+ * the few fields the customer themselves may fill in once a contract is
+ * released. Booking specifics (package, price, wedding date, ...) are only
+ * ever set here, never by the public customer flow.
+ */
+export interface AdminContractInput {
+  customerName1: string;
+  customerName2: string | null;
+  customerEmail: string;
+  customerPhone: string | null;
+  customerAddress: string | null;
+  packageId: string;
+  packageLabel: string;
+  packageServices: string[];
+  packagePriceAmount: number;
+  weddingDate: string | null;
+  location: string | null;
+  additionalLocations: string | null;
+  startTime: string | null;
+  durationLabel: string | null;
+  bookingType: BookingType | null;
+  extras: string[];
+  extrasPriceAmount: number;
+  depositAmount: number | null;
+  customTerms: Record<string, unknown>;
 }
