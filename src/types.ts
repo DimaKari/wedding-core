@@ -2,6 +2,8 @@ export type BrandSlug = "dimax" | "dkhochzeitart";
 
 export type ContractStatus = "draft" | "signed";
 
+export type BookingType = "photo" | "video" | "photo_and_video";
+
 /**
  * Frozen at signing, stored in contracts.content_snapshot — structured
  * content facts, NEVER raw rendered HTML, so the hash stays stable against
@@ -12,25 +14,36 @@ export type ContractStatus = "draft" | "signed";
  * is what makes "render exclusively from content_snapshot after signing"
  * actually immutable, since the frontend's template component could
  * otherwise change later.
+ *
+ * Amounts are currency-neutral numbers — the brand determines the currency
+ * (CHF for dimax, EUR for dkhochzeitart), applied by each frontend's own
+ * formatting, not stored here.
  */
 export interface ContentSnapshot {
   brand: BrandSlug;
   packageId: string;
   packageLabel: string;
-  priceChf: number;
-  /** Anzahlung. Restbetrag = priceChf - depositChf, computed at render
-   * time, not stored separately -- avoids two numbers drifting apart. */
-  depositChf: number | null;
+  packageServices: string[];
+  packagePriceAmount: number;
+  extras: string[];
+  extrasPriceAmount: number;
+  /** Anzahlung. Restbetrag = (packagePriceAmount + extrasPriceAmount) -
+   * depositAmount, computed at render time, not stored separately —
+   * avoids numbers drifting apart. */
+  depositAmount: number | null;
   weddingDate: string | null;
   location: string | null;
+  additionalLocations: string | null;
   startTime: string | null;
   durationLabel: string | null;
-  extras: string[];
+  bookingType: BookingType | null;
   customTerms: Record<string, unknown>;
   customer: {
-    names: string;
+    name1: string;
+    name2: string | null;
     email: string;
     phone: string | null;
+    address: string | null;
   };
   legalText: string;
   signedAt: string; // ISO timestamp
@@ -50,9 +63,11 @@ export interface SignatureInput {
 }
 
 export interface CustomerDataInput {
-  names: string;
+  name1: string;
+  name2: string | null;
   email: string;
   phone: string | null;
+  address: string | null;
   weddingDate: string | null;
   location: string | null;
 }
