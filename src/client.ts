@@ -1,0 +1,157 @@
+import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
+import { eq, sql } from "drizzle-orm";
+import { Pool } from "pg";
+import { contracts, type ContractRow } from "./schema.js";
+import { hashSnapshot } from "./snapshot.js";
+import type { BrandSlug, ContentSnapshot, CustomerDataInput, SignatureInput } from "./types.js";
+
+export interface WeddingClientConfig {
+  /** The single brand this deployment is permanently bound to — never
+   * derived per-request (see brand-guard.ts). */
+  brandSlug: BrandSlug;
+  /** Connection string for the low-privilege `wedding_app` role — never a
+   * service_role/admin/table-owner connection string. */
+  databaseUrl: string;
+}
+
+export class ContractNotFoundError extends Error {
+  constructor(id: string) {
+    super(`No contract "${id}" for this brand.`);
+    this.name = "ContractNotFoundError";
+  }
+}
+
+export class ContractAlreadySignedError extends Error {
+  constructor(id: string) {
+    super(`Contract "${id}" is already signed and is read-only.`);
+    this.name = "ContractAlreadySignedError";
+  }
+}
+
+type Db = NodePgDatabase<Record<string, never>>;
+
+/**
+ * Brand-bound, minimal data-access client — exactly the three methods
+ * approved in architecture doc section M.7: getContract, saveCustomerData,
+ * signContract. Every method runs inside `withBrandScope`, which sets the
+ * Postgres session variable the RLS policies key on — the server-side
+ * enforced tenant filter, independent of (and in addition to) RLS itself.
+ * A signed contract is additionally read-only at the database level (see
+ * migrations/0001_init.sql, tenant_update_draft_only policy) — the
+ * ContractAlreadySignedError thrown here is a clear early error, not the
+ * only thing standing between a bug and an overwrite.
+ */
+export class WeddingClient {
+  readonly brandSlug: BrandSlug;
+  private readonly db: Db;
+
+  constructor(config: WeddingClientConfig) {
+    this.brandSlug = config.brandSlug;
+    const pool = new Pool({ connectionString: config.databaseUrl });
+    this.db = drizzle(pool);
+  }
+
+  private async withBrandScope<T>(fn: (tx: Db) => Promise<T>): Promise<T> {
+    return this.db.transaction(async (tx) => {
+      await tx.execute(sql`select set_config('app.current_brand', ${this.brandSlug}, true)`);
+      return fn(tx as unknown as Db);
+    });
+  }
+
+  /** Read-only fetch by id (= the private link token). Returns null if the
+   * row doesn't exist or belongs to a different brand (RLS hides it either way). */
+  async getContract(id: string): Promise<ContractRow | null> {
+    return this.withBrandScope(async (tx) => {
+      const rows = await tx.select().from(contracts).where(eq(contracts.id, id));
+      return rows[0] ?? null;
+    });
+  }
+
+  /** Updates customer-completable fields. Refuses once status='signed' —
+   * checked here for a clear error, enforced again at the database level
+   * regardless (tenant_update_draft_only). */
+  async saveCustomerData(id: string, input: CustomerDataInput): Promise<void> {
+    await this.withBrandScope(async (tx) => {
+      const rows = await tx.select().from(contracts).where(eq(contracts.id, id)).for("update");
+      const row = rows[0];
+      if (!row) throw new ContractNotFoundError(id);
+      if (row.status !== "draft") throw new ContractAlreadySignedError(id);
+
+      const updated = await tx
+        .update(contracts)
+        .set({
+          customerNames: input.names,
+          customerEmail: input.email,
+          customerPhone: input.phone,
+          weddingDate: input.weddingDate,
+          location: input.location,
+          updatedAt: new Date(),
+        })
+        .where(eq(contracts.id, id))
+        .returning({ id: contracts.id });
+
+      if (updated.length === 0) throw new ContractAlreadySignedError(id);
+    });
+  }
+
+  /**
+   * Freezes the current row into content_snapshot (structured JSON, never
+   * raw HTML — includes a verbatim copy of the legal text the customer saw,
+   * so the post-signing view stays immutable even if the frontend's
+   * template code changes later), hashes it, records the signature, and
+   * flips status to 'signed' — all in one transaction, with a row lock
+   * (`for("update")`) held from the first read, so two concurrent sign
+   * attempts on the same contract can never both succeed.
+   */
+  async signContract(id: string, input: SignatureInput): Promise<{ contentHash: string }> {
+    return this.withBrandScope(async (tx) => {
+      const rows = await tx.select().from(contracts).where(eq(contracts.id, id)).for("update");
+      const row = rows[0];
+      if (!row) throw new ContractNotFoundError(id);
+      if (row.status !== "draft") throw new ContractAlreadySignedError(id);
+
+      const signedAt = new Date();
+      const snapshot: ContentSnapshot = {
+        brand: row.brand as BrandSlug,
+        packageId: row.packageId,
+        packageLabel: row.packageLabel,
+        priceChf: row.priceChf,
+        weddingDate: row.weddingDate,
+        location: row.location,
+        customTerms: (row.customTerms as Record<string, unknown>) ?? {},
+        customer: {
+          names: row.customerNames ?? "",
+          email: row.customerEmail ?? "",
+          phone: row.customerPhone,
+        },
+        legalText: input.legalText,
+        signedAt: signedAt.toISOString(),
+      };
+      const contentHash = hashSnapshot(snapshot);
+
+      const updated = await tx
+        .update(contracts)
+        .set({
+          contentSnapshot: snapshot,
+          contentHash,
+          signerNameTyped: input.signerNameTyped,
+          signatureStrokes: input.strokes,
+          consents: input.consents,
+          ipAddress: input.ipAddress,
+          userAgent: input.userAgent,
+          signedAt,
+          status: "signed",
+          updatedAt: signedAt,
+        })
+        .where(eq(contracts.id, id))
+        .returning({ id: contracts.id });
+
+      if (updated.length === 0) throw new ContractAlreadySignedError(id);
+      return { contentHash };
+    });
+  }
+}
+
+export function createWeddingClient(config: WeddingClientConfig): WeddingClient {
+  return new WeddingClient(config);
+}
