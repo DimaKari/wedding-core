@@ -6,15 +6,18 @@
   "description": "Minimal shared contract-system module for DIMAX Wedding and DKHochzeitArt — one Supabase table, one small client. Not a frontend.",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
     "drizzle-orm": "^0.44.0",
-    "pg": "^8.13.0"
+    "pg": "^8.13.0",
+    "@types/pg": "^8.11.0"
   },
   "devDependencies": {
-    "@types/pg": "^8.11.0",
     "typescript": "^5.7.0"
   }
 }

@@ -1,9 +1,9 @@
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { eq, sql } from "drizzle-orm";
 import { Pool } from "pg";
-import { contracts, type ContractRow } from "./schema.js";
-import { hashSnapshot } from "./snapshot.js";
-import type { BrandSlug, ContentSnapshot, CustomerDataInput, SignatureInput } from "./types.js";
+import { contracts, type ContractRow } from "./schema";
+import { hashSnapshot } from "./snapshot";
+import type { BrandSlug, ContentSnapshot, CustomerDataInput, SignatureInput } from "./types";
 
 export interface WeddingClientConfig {
   /** The single brand this deployment is permanently bound to — never
@@ -69,10 +69,18 @@ export class WeddingClient {
 
   /** Updates customer-completable fields. Refuses once status='signed' —
    * checked here for a clear error, enforced again at the database level
-   * regardless (tenant_update_draft_only). */
+   * regardless (tenant_update_draft_only). Uses a plain SELECT (not `FOR
+   * UPDATE`) to read the current row: Postgres RLS requires a locking
+   * SELECT to *also* satisfy the UPDATE policy's USING clause, which for
+   * an already-signed row (status != 'draft') makes the row invisible to
+   * `FOR UPDATE` entirely — surfacing as a wrong "not found" instead of
+   * "already signed". Concurrency safety doesn't need the lock anyway: the
+   * UPDATE statement below is itself atomic under Postgres's normal
+   * row-level locking, re-checking `status='draft'` against the committed
+   * row, which is exactly what `updated.length === 0` below detects. */
   async saveCustomerData(id: string, input: CustomerDataInput): Promise<void> {
     await this.withBrandScope(async (tx) => {
-      const rows = await tx.select().from(contracts).where(eq(contracts.id, id)).for("update");
+      const rows = await tx.select().from(contracts).where(eq(contracts.id, id));
       const row = rows[0];
       if (!row) throw new ContractNotFoundError(id);
       if (row.status !== "draft") throw new ContractAlreadySignedError(id);
@@ -99,13 +107,17 @@ export class WeddingClient {
    * raw HTML — includes a verbatim copy of the legal text the customer saw,
    * so the post-signing view stays immutable even if the frontend's
    * template code changes later), hashes it, records the signature, and
-   * flips status to 'signed' — all in one transaction, with a row lock
-   * (`for("update")`) held from the first read, so two concurrent sign
-   * attempts on the same contract can never both succeed.
+   * flips status to 'signed' — all in one transaction. Concurrency safety
+   * comes from the final UPDATE statement's own atomicity under Postgres's
+   * normal row-level locking (re-checked against `status='draft'` at
+   * commit time), not from an explicit `FOR UPDATE` lock on the initial
+   * read — see the comment on saveCustomerData for why `FOR UPDATE` is
+   * deliberately not used here (it interacts badly with the
+   * status-conditional RLS UPDATE policy).
    */
   async signContract(id: string, input: SignatureInput): Promise<{ contentHash: string }> {
     return this.withBrandScope(async (tx) => {
-      const rows = await tx.select().from(contracts).where(eq(contracts.id, id)).for("update");
+      const rows = await tx.select().from(contracts).where(eq(contracts.id, id));
       const row = rows[0];
       if (!row) throw new ContractNotFoundError(id);
       if (row.status !== "draft") throw new ContractAlreadySignedError(id);

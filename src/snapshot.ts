@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { ContentSnapshot } from "./types.js";
+import type { ContentSnapshot } from "./types";
 
 /** Recursively sorts object keys so the hash is stable regardless of
  * insertion order at any nesting level. */

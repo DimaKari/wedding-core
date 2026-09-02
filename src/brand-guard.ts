@@ -1,4 +1,4 @@
-import type { BrandSlug } from "./types.js";
+import type { BrandSlug } from "./types";
 
 /**
  * Each frontend is permanently bound to one brand via its own
