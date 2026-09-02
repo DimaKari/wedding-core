@@ -19,6 +19,10 @@ export const contracts = pgTable("contracts", {
   priceChf: integer("price_chf").notNull(),
   weddingDate: date("wedding_date"),
   location: text("location"),
+  startTime: text("start_time"),
+  durationLabel: text("duration_label"),
+  extras: jsonb("extras").notNull().default([]),
+  depositChf: integer("deposit_chf"),
   customTerms: jsonb("custom_terms").notNull().default({}),
 
   contentSnapshot: jsonb("content_snapshot"),

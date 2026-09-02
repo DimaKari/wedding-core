@@ -128,8 +128,12 @@ export class WeddingClient {
         packageId: row.packageId,
         packageLabel: row.packageLabel,
         priceChf: row.priceChf,
+        depositChf: row.depositChf,
         weddingDate: row.weddingDate,
         location: row.location,
+        startTime: row.startTime,
+        durationLabel: row.durationLabel,
+        extras: (row.extras as string[]) ?? [],
         customTerms: (row.customTerms as Record<string, unknown>) ?? {},
         customer: {
           names: row.customerNames ?? "",

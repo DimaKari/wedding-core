@@ -18,8 +18,14 @@ export interface ContentSnapshot {
   packageId: string;
   packageLabel: string;
   priceChf: number;
+  /** Anzahlung. Restbetrag = priceChf - depositChf, computed at render
+   * time, not stored separately -- avoids two numbers drifting apart. */
+  depositChf: number | null;
   weddingDate: string | null;
   location: string | null;
+  startTime: string | null;
+  durationLabel: string | null;
+  extras: string[];
   customTerms: Record<string, unknown>;
   customer: {
     names: string;
