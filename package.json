@@ -6,8 +6,18 @@
   "workspaces": [
     "packages/*"
   ],
+  "exports": {
+    "./client": "./packages/client/src/index.ts",
+    "./contract-core": "./packages/contract-core/src/index.ts",
+    "./db": "./packages/db/src/index.ts"
+  },
   "scripts": {
     "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.44.0",
+    "pg": "^8.13.0",
+    "@types/pg": "^8.11.0"
   },
   "devDependencies": {
     "typescript": "^5.7.0"

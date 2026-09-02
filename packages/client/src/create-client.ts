@@ -1,8 +1,17 @@
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { sql } from "drizzle-orm";
 import { Pool } from "pg";
-import * as schema from "@wedding-core/db";
-import { assertHostMatchesBrand, type BrandSlug } from "@wedding-core/contract-core";
+// Relative imports, not "@wedding-core/db" / "@wedding-core/contract-core"
+// package-specifier imports: this repo is consumed externally as ONE git
+// dependency ("wedding-core", exports subpaths ./client, ./contract-core,
+// ./db — see root package.json and README "Consuming from a frontend"),
+// not as three separately-installed packages. A bare-specifier import here
+// would resolve locally via npm workspace symlinks but break for an
+// external consumer, who only has node_modules/wedding-core, not
+// node_modules/@wedding-core/db.
+import * as schema from "../../db/src/schema.js";
+import { assertHostMatchesBrand } from "../../contract-core/src/brand-guard.js";
+import type { BrandSlug } from "../../contract-core/src/types.js";
 
 export interface WeddingCoreClientConfig {
   /** The single brand this deployment is permanently bound to — baked in via
