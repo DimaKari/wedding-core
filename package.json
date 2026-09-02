@@ -1,0 +1,15 @@
+{
+  "name": "wedding-core",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Shared multi-tenant backend (schema, RLS, contract/audit core) for DIMAX Wedding and DKHochzeitArt. Not a frontend — consumed by two independent Next.js apps as scoped packages.",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}
